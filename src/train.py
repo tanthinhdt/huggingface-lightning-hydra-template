@@ -1,12 +1,18 @@
-from typing import Any, Dict, List, Optional, Tuple
-
 import hydra
-import lightning as L
 import rootutils
-import torch
-from lightning import Callback, LightningDataModule, LightningModule, Trainer
+import polars as pl
+from pathlib import Path
+from transformers import AutoConfig, AutoModel, HfApi, PreTrainedModel
+from typing import Any, Dict, List, Optional, Tuple
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
+from lightning import (
+    Callback,
+    LightningDataModule,
+    LightningModule,
+    Trainer,
+    seed_everything
+)
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # ------------------------------------------------------------------------------------ #
@@ -52,13 +58,31 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     # set seed for random number generators in pytorch, numpy and python.random
     if cfg.get("seed"):
-        L.seed_everything(cfg.seed, workers=True)
+        seed_everything(cfg.seed, workers=True)
+
+    log.info(f"Instantiating litmodule <{cfg.model._target_}>")
+    net: PreTrainedModel = hydra.utils.instantiate(cfg.model.net)
 
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
-    datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
+    datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data, processor=net.get_processor())
+    datamodule.prepare_data()
+    datamodule.setup("fit")
+    log.info(f"Number of training samples: {datamodule.num_train_samples}")
+    log.info(f"Number of validation samples: {datamodule.num_val_samples}")
+    log.info(f"Number of testing samples: {datamodule.num_test_samples}")
+    log.info(f"Random sample from training set -\n{datamodule.get_random_sample('train')}")
+    log.info(f"Random sample from validation set -\n{datamodule.get_random_sample('validation')}")
+    log.info(f"Random sample from testing set -\n{datamodule.get_random_sample('test')}")
 
-    log.info(f"Instantiating model <{cfg.model._target_}>")
-    model: LightningModule = hydra.utils.instantiate(cfg.model)
+    log.info(f"Instantiating loss function <{cfg.model.loss_fct._target_}>")
+    loss_fct = hydra.utils.instantiate(
+        cfg.model.loss_fct,
+        class_weight=datamodule.class_weight,
+        class_count=datamodule.class_count
+    )
+
+    log.info(f"Instantiating litmodule <{cfg.model._target_}>")
+    model: LightningModule = hydra.utils.instantiate(cfg.model, net=net, loss_fct=loss_fct)
 
     log.info("Instantiating callbacks...")
     callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))
@@ -71,8 +95,8 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     object_dict = {
         "cfg": cfg,
-        "datamodule": datamodule,
         "model": model,
+        "datamodule": datamodule,
         "callbacks": callbacks,
         "logger": logger,
         "trainer": trainer,
@@ -82,11 +106,27 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         log.info("Logging hyperparameters!")
         log_hyperparameters(object_dict)
 
+    metric_dict = {}
+
     if cfg.get("train"):
         log.info("Starting training!")
-        trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
-
-    train_metrics = trainer.callback_metrics
+        trainer.fit(
+            model=model,
+            train_dataloaders=datamodule.train_dataloader(),
+            val_dataloaders=datamodule.val_dataloader(),
+            ckpt_path=cfg.get("ckpt_path"),
+        )
+        metric_dict.update(trainer.callback_metrics)
+        trainer.test(dataloaders=datamodule.val_dataloader(), ckpt_path="best", verbose=False)
+        val_metrics = [
+            {
+                "Metric": k.split("/")[1],
+                "Validation": v.item(),
+            }
+            for k, v in trainer.callback_metrics.items()
+        ]
+        log.info(f"Best model validation metrics:\n{pl.DataFrame(val_metrics)}")
+        log.info(f"Best ckpt path: {trainer.checkpoint_callback.best_model_path}")
 
     if cfg.get("test"):
         log.info("Starting testing!")
@@ -94,13 +134,62 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if ckpt_path == "":
             log.warning("Best ckpt not found! Using current weights for testing...")
             ckpt_path = None
-        trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
-        log.info(f"Best ckpt path: {ckpt_path}")
+        trainer.test(datamodule=datamodule, ckpt_path=ckpt_path, verbose=False)
+        metric_dict.update(trainer.callback_metrics)
+        test_metrics = [
+            {
+                "Metric": k.split("/")[1],
+                "Test": v.item(),
+            }
+            for k, v in trainer.callback_metrics.items()
+        ]
+        log.info(f"Best model test metrics:\n{pl.DataFrame(test_metrics)}")
 
-    test_metrics = trainer.callback_metrics
+    if cfg.get("hf_config"):
 
-    # merge train and test metrics
-    metric_dict = {**train_metrics, **test_metrics}
+        log.info("Loading best model for HuggingFace saving...")
+        best_model = hydra.utils.get_class(cfg.model._target_).load_from_checkpoint(
+            trainer.checkpoint_callback.best_model_path
+        )
+
+        log.info("Registering model config and model classes to HuggingFace Auto classes...")
+        model_config_class = hydra.utils.get_class(cfg.model.net.config._target_)
+        model_class = hydra.utils.get_class(cfg.model.net._target_)
+        AutoConfig.register(model_config_class.model_type, model_config_class)
+        AutoModel.register(model_config_class, model_class)
+        model_config_class.register_for_auto_class()
+        model_class.register_for_auto_class("AutoModel")
+
+        mode = cfg.hf_config.get("mode", "save")
+        if mode not in ["save", "push", "save_and_push"]:
+            log.warning(f"Unknown hf_config.mode: {mode}. Skipping HuggingFace saving...")
+
+        if mode == "save" or mode == "save_and_push":
+            output_dir = Path(cfg.hf_config.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            best_model.net.save_pretrained(output_dir)
+            log.info(f"Model saved to {cfg.hf_config.output_dir} in HuggingFace format.")
+
+        if mode == "push" or mode == "save_and_push":
+            log.info("Pushing model to HuggingFace Hub...")
+            output_repo = cfg.hf_config.output_repo
+            private = cfg.hf_config.get("private", True)
+            overwrite = cfg.hf_config.get("overwrite", True)
+            api = HfApi()
+            if overwrite:
+                api.delete_repo(
+                    repo_id=output_repo,
+                    repo_type="model",
+                    missing_ok=True,
+                )
+            api.create_repo(
+                repo_id=output_repo,
+                repo_type="model",
+                private=private,
+                exist_ok=True,
+            )
+            best_model.net.push_to_hub(output_repo)
+            log.info(f"Model pushed to HuggingFace Hub at {output_repo}.")
 
     return metric_dict, object_dict
 
