@@ -4,38 +4,98 @@
 # python train.py experiment=example
 
 defaults:
-  - override /data: mnist
-  - override /model: mnist
+  - override /data: dataset
+  - override /model: model
   - override /callbacks: default
-  - override /trainer: default
+  - override /trainer: gpu
+  - override /logger: many_loggers
+  - override /hydra: default
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["mnist", "simple_dense_net"]
+tags: ["dataset", "model"]
 
 seed: 12345
+
+test: true
+
+gpu:
+  devices: 1
+
+data:
+  batch_size: 64
+  num_workers: 128
+  pin_memory: false
+
+model:
+  net:
+    config:
+      encoder_pretrained_model_name_or_path: "facebook/esm2_t6_8M_UR50D"
+      hidden_dim: 320
+      encoder_dropout: 0.1
+
+  optimizer:
+    _target_: torch.optim.Adam
+    _partial_: true
+    lr: 0.001
+    weight_decay: 0.0
+
+  scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: true
+    mode: min
+    factor: 0.1
+    patience: 10
+
+  metric:
+    _target_: src.models.components.metrics.Metrics
+    _partial_: true
+
+  best_metric: mcc
+
+  compile: false
+
+callbacks:
+  model_checkpoint:
+    dirpath: ${paths.output_dir}/checkpoints
+    filename: epoch_{epoch:03d}
+    monitor: val/${model.best_metric}_best
+    mode: max
+    save_last: false
+    auto_insert_metric_name: true
+
+  early_stopping:
+    monitor: val/${model.best_metric}
+    patience: 10
+    mode: max
+    strict: false
+    check_finite: false
 
 trainer:
   min_epochs: 10
   max_epochs: 10
-  gradient_clip_val: 0.5
-
-model:
-  optimizer:
-    lr: 0.002
-  net:
-    lin1_size: 128
-    lin2_size: 256
-    lin3_size: 64
-  compile: false
-
-data:
-  batch_size: 64
+  gradient_clip_val: 0.0
 
 logger:
-  wandb:
-    tags: ${tags}
-    group: "mnist"
-  aim:
-    experiment: "mnist"
+  tensorboard:
+    save_dir: ${paths.output_dir}/
+    name: ""
+    log_graph: true
+    default_hp_metric: true
+    prefix: ""
+
+  csv:
+    name: "csv/"
+    prefix: ""
+
+# hydra:
+#   run:
+#     dir: ${paths.log_dir}/${task_name}/hfmodel
+
+# hf_config:
+#   output_dir: ${paths.output_dir}/huggingface
+#   output_repo: tanthinhdt/hfmodel
+#   mode: "save_and_push"
+#   overwrite: true
+#   private: true

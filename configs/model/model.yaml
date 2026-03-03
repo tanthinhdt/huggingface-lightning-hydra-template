@@ -1,0 +1,32 @@
+_target_: src.models.module.LitModule
+
+net:
+  _target_: src.models.components.hfmodel.HFModelForTask
+  config:
+    _target_: src.models.components.hfmodel.HFModelConfig
+    encoder_pretrained_model_name_or_path: "facebook/esm2_t6_8M_UR50D"
+    hidden_dim: 320
+    encoder_dropout: 0.1
+
+criterion:
+  _target_: src.models.components.losses.CrossEntropyLoss
+
+optimizer:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.001
+  weight_decay: 0.0
+
+scheduler:
+  _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+  _partial_: true
+  mode: min
+  factor: 0.1
+  patience: 10
+
+metric:
+  _target_: src.models.components.metrics.Metrics
+  _partial_: true
+
+# compile model for faster training with pytorch 2.0
+compile: false
