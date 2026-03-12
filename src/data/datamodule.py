@@ -65,8 +65,19 @@ class DataModule(LightningDataModule):
         self.save_hyperparameters(logger=False)
 
         self.data: Optional[DatasetDict] = None
-
         self.batch_size_per_device = batch_size
+
+    def num_train_samples(self) -> int:
+        """Return the number of training samples."""
+        return self.data["train"].num_rows if self.data else 0
+
+    def num_val_samples(self) -> int:
+        """Return the number of validation samples."""
+        return self.data["validation"].num_rows if self.data else 0
+
+    def num_test_samples(self) -> int:
+        """Return the number of test samples."""
+        return self.data["test"].num_rows if self.data else 0
 
     def prepare_data(self) -> None:
         """Download data if needed. Lightning ensures that `self.prepare_data()` is called only
