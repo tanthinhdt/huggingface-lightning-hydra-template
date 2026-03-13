@@ -1,4 +1,5 @@
 import os
+import torch
 from typing import Any, Dict, Optional, List
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader
@@ -63,18 +64,23 @@ class DataModule(LightningDataModule):
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
-
-        self.data: Optional[DatasetDict] = None
         self.batch_size_per_device = batch_size
 
+        self.data: Optional[DatasetDict] = None
+        self.class_weight: torch.Tensor = None
+        self.class_count: torch.Tensor = None
+
+    @property
     def num_train_samples(self) -> int:
         """Return the number of training samples."""
         return self.data["train"].num_rows if self.data else 0
 
+    @property
     def num_val_samples(self) -> int:
         """Return the number of validation samples."""
         return self.data["validation"].num_rows if self.data else 0
 
+    @property
     def num_test_samples(self) -> int:
         """Return the number of test samples."""
         return self.data["test"].num_rows if self.data else 0
@@ -105,7 +111,9 @@ class DataModule(LightningDataModule):
             :param batch: A batch from the dataset.
             :return: The processed batch.
             """
-            return batch
+            inputs = self.hparams.processor.tokenize_sequences(batch["sequence"])
+            labels = self.hparams.processor.encode_labels(batch["label"])
+            return {**inputs, "label": labels}
 
         # Divide batch size by the number of devices.
         if self.trainer is not None:
@@ -117,7 +125,21 @@ class DataModule(LightningDataModule):
 
         # load and split datasets only if not loaded already
         if not self.data:
-            self.data = load_dataset(self.hparams.data_dir).map(process, batched=True)
+            data = load_dataset(self.hparams.data_dir)
+            self.data = data.map(
+                process,
+                batched=True,
+                try_original_type=False,
+            )
+            self.data.set_format(type="torch", columns=["input_ids", "attention_mask", "label"])
+
+        # Calculate class counts and weights if not calculated already
+        if self.class_count is None:
+            num_labels = self.hparams.processor.config.num_labels
+            self.class_count = torch.bincount(torch.tensor(self.data["train"]["label"]), minlength=num_labels)
+        if self.class_weight is None:
+            weight = 1.0 / (self.class_count.float() + 1e-8)    # Add epsilon to avoid division by zero
+            self.class_weight = weight / weight.sum()           # Normalize weights
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.
