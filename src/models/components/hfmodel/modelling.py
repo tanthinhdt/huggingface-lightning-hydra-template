@@ -108,10 +108,10 @@ class LabelEncoder:
 
 
 class Processor:
-    """Processor for the MESP model, responsible for tokenization and label encoding."""
+    """Processor responsible for tokenization and label encoding."""
 
     def __init__(self, config: HFModelConfig):
-        """Initialize the HFModelProcessor with the given configuration."""
+        """Initialize the Processor with the given configuration."""
         super().__init__()
         self.config = config
         self.tokenizer = AutoTokenizer.from_pretrained(config.encoder_pretrained_model_name_or_path)
