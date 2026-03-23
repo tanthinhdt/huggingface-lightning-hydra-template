@@ -2,6 +2,7 @@ import torch
 from typing import Any, Dict, Tuple
 from lightning import LightningModule
 from torchmetrics import MaxMetric, MeanMetric, Metric
+from src.models.components.metrics import Metrics
 
 
 class LitModule(LightningModule):
@@ -70,13 +71,14 @@ class LitModule(LightningModule):
 
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
-        self.save_hyperparameters(logger=False)
+        self.save_hyperparameters(logger=False, ignore=["net", "criterion"])
 
         self.net = net
+        self.criterion = criterion
 
         # metric objects for calculating and averaging accuracy across batches
-        self.val_metrics = self.hparams.metric(average="macro")
-        self.test_metrics = self.hparams.metric(average="macro")
+        self.val_metrics = Metrics(net.config.num_labels)
+        self.test_metrics = Metrics(net.config.num_labels)
 
         # for averaging loss across batches
         self.train_loss = MeanMetric()
@@ -187,11 +189,13 @@ class LitModule(LightningModule):
         input_ids = batch["input_ids"]
         attention_mask = batch["attention_mask"]
         labels = batch["label"]
+
         model_output = self.model_step(input_ids, attention_mask, labels=labels)
+        predictions = torch.argmax(model_output.logits, dim=-1)
 
         # update and log metrics
         self.val_loss.update(model_output.loss)
-        self.val_metrics.update(model_output.predictions, labels)
+        self.val_metrics.update(predictions, labels)
 
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."
@@ -223,8 +227,11 @@ class LitModule(LightningModule):
         """
         input_ids = batch["input_ids"]
         attention_mask = batch["attention_mask"]
+
         model_output = self.model_step(input_ids, attention_mask)
-        self.test_metrics.update(model_output.predictions, batch["label"])
+        predictions = torch.argmax(model_output.logits, dim=-1)
+
+        self.test_metrics.update(predictions, batch["label"])
 
     def on_test_epoch_end(self) -> None:
         """Compute and log test metrics at the end of testing."""
