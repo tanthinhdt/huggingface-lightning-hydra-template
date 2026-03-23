@@ -14,8 +14,17 @@ from torchmetrics.functional.classification import (
 class Metrics(Metric):
     """Base class for all metric modules."""
 
-    def __init__(self) -> None:
+    def __init__(self, num_labels: int) -> None:
+        """
+        Initialize the Metrics module.
+        
+        Parameters
+        ----------
+        num_labels: int
+            The number of labels in the classification task.
+        """
         super().__init__()
+        self.num_labels = num_labels
         self.add_state("predictions", default=[], dist_reduce_fx="cat")
         self.add_state("labels", default=[], dist_reduce_fx="cat")
 
