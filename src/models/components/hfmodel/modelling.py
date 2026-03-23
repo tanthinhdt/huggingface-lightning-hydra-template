@@ -107,7 +107,7 @@ class LabelEncoder:
         return [str(self.id2label[id]) for id in ids]
 
 
-class HFModelProcessor:
+class Processor:
     """Processor for the MESP model, responsible for tokenization and label encoding."""
 
     def __init__(self, config: HFModelConfig):
@@ -280,7 +280,7 @@ class HFModel(PreTrainedModel):
 
     def get_processor(self):
         """Get the processor for the model. This can be used to preprocess the data in the datamodule."""
-        return HFModelProcessor(self.config)
+        return Processor(self.config)
 
 
 class HFModelForTask(HFModel):
