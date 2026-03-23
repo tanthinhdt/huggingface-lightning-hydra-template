@@ -111,7 +111,13 @@ class Processor:
     """Processor responsible for tokenization and label encoding."""
 
     def __init__(self, config: HFModelConfig):
-        """Initialize the Processor with the given configuration."""
+        """Initialize the Processor with the given configuration.
+        
+        Parameters
+        ----------
+        config : HFModelConfig
+            Configuration object containing model hyperparameters and settings.
+        """
         super().__init__()
         self.config = config
         self.tokenizer = AutoTokenizer.from_pretrained(config.encoder_pretrained_model_name_or_path)
