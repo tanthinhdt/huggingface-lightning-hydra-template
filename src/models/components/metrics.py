@@ -1,6 +1,14 @@
 import torch
 from typing import Dict
 from torchmetrics import Metric
+from torchmetrics.functional.classification import (
+    multiclass_accuracy,
+    multiclass_precision,
+    multiclass_specificity,
+    multiclass_recall,
+    multiclass_f1_score,
+    multiclass_matthews_corrcoef,
+)
 
 
 class Metrics(Metric):
@@ -17,7 +25,7 @@ class Metrics(Metric):
 
         Parameters
         ----------
-        preds : torch.Tensor
+        predictions : torch.Tensor
             Predicted values. Shape: (batch_size,)
         labels : torch.Tensor
             Ground truth labels. Shape: (batch_size,)
@@ -32,12 +40,26 @@ class Metrics(Metric):
         -------
         Dict[str, torch.Tensor]
             Computed metric values.
-            
-        Raises
-        ------
-        NotImplementedError
-            Must be implemented by subclasses.
         """
         preds = torch.cat(self.predictions)
         labels = torch.cat(self.labels)
-        raise NotImplementedError("Please implement this method.")
+        num_labels = self.num_labels
+        average = "macro"
+
+        acc = multiclass_accuracy(preds, labels, num_classes=num_labels)
+        f1 = multiclass_f1_score(preds, labels, num_classes=num_labels, average=average)
+        mcc = multiclass_matthews_corrcoef(preds, labels, num_classes=num_labels)
+        pre = multiclass_precision(preds, labels, num_classes=num_labels, average=average)
+        sens = multiclass_recall(preds, labels, num_classes=num_labels, average=average)
+        spec = multiclass_specificity(preds, labels, num_classes=num_labels, average=average)
+        bacc = 0.5 * (spec + sens)
+
+        return {
+            "acc": acc,
+            "bacc": bacc,
+            "f1": f1,
+            "mcc": mcc,
+            "pre": pre,
+            "sens": sens,
+            "spec": spec,
+        }
