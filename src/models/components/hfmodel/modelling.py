@@ -1,8 +1,8 @@
 import torch
 from torch import nn
-from dataclasses import dataclass
 from typing import Optional, Tuple, Dict, Union, List
 from transformers import PreTrainedModel, AutoModel, AutoTokenizer
+from transformers.modeling_outputs import SequenceClassifierOutput
 from .configuration import HFModelConfig
 
 
@@ -46,18 +46,6 @@ def trim_special_tokens(last_hidden_state: torch.Tensor, attention_mask: torch.T
     trimmed_embeddings = torch.stack(trimmed_embeddings)  # (batch_size, total_len, hidden_dim)
     trimmed_attention_masks = torch.stack(trimmed_attention_masks)  # (batch_size, total_len)
     return trimmed_embeddings, trimmed_attention_masks
-
-
-@dataclass
-class ModelOutput:
-    """
-    Base model output class for Mesp models.
-    """
-    loss: Optional[torch.FloatTensor] = None
-    logits: Optional[torch.FloatTensor] = None
-    predictions: Optional[torch.LongTensor] = None
-    last_hidden_state: Optional[torch.FloatTensor] = None
-    attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
 
 
 class LabelEncoder:
@@ -119,7 +107,65 @@ class LabelEncoder:
         return [str(self.id2label[id]) for id in ids]
 
 
-class ClassificationHead(nn.Module):
+class HFModelProcessor:
+    """Processor for the MESP model, responsible for tokenization and label encoding."""
+
+    def __init__(self, config: HFModelConfig):
+        """Initialize the HFModelProcessor with the given configuration."""
+        super().__init__()
+        self.config = config
+        self.tokenizer = AutoTokenizer.from_pretrained(config.encoder_pretrained_model_name_or_path)
+        self.label_encoder = LabelEncoder(config.sp2id, config.id2sp)
+
+    @property
+    def num_labels(self) -> int:
+        """Get the number of labels for classification tasks.
+        
+        Returns
+        -------
+        int
+            The number of labels for classification tasks.
+        """
+        return self.config.num_labels
+
+    def tokenize_sequences(self, sequences: List[str]) -> Dict[str, torch.Tensor]:
+        """Tokenize input sequences using the tokenizer.
+
+        Parameters
+        ----------
+        sequences : List[str]
+            A list of input sequences to be tokenized.
+
+        Returns
+        -------
+        Dict[str, torch.Tensor]
+            A dictionary containing tokenized inputs, including 'input_ids' and 'attention_mask'.
+        """
+        return self.tokenizer(
+            sequences,
+            padding="max_length",
+            truncation=True,
+            max_length=self.config.max_seq_length,
+            return_tensors="pt",
+        )
+
+    def encode_labels(self, labels: List[str]) -> torch.Tensor:
+        """Encode labels into integer IDs using the label encoder.
+
+        Parameters
+        ----------
+        labels : List[str]
+            A list of label names to be encoded.
+
+        Returns
+        -------
+        torch.Tensor
+            A tensor containing the encoded integer IDs for the labels.
+        """
+        return torch.tensor(self.label_encoder(labels), dtype=torch.long)
+
+
+class HFModelClassifier(nn.Module):
     def __init__(
         self,
         hidden_dim: int,
@@ -146,7 +192,7 @@ class ClassificationHead(nn.Module):
         attention_mask: torch.Tensor,
         output_attentions: Optional[bool] = False,
         **kwargs,
-    ) -> ModelOutput:
+    ) -> SequenceClassifierOutput:
         """Compute forward pass for the token classification head.
 
         Parameters
@@ -160,7 +206,7 @@ class ClassificationHead(nn.Module):
         
         Returns
         -------
-        ModelOutput
+        SequenceClassifierOutput
             Model output containing logits, last hidden states, and attentions
             from the token classification head.
         """
@@ -175,33 +221,11 @@ class ClassificationHead(nn.Module):
         if output_attentions:
             attentions = attentions
 
-        return ModelOutput(
+        return SequenceClassifierOutput(
             logits=logits,
-            last_hidden_state=context,
+            hidden_states=context,
             attentions=attentions,
         )
-
-
-class HFModelProcessor:
-    """Processor for the MESP model, responsible for tokenization and label encoding."""
-
-    def __init__(self, config: HFModelConfig):
-        """Initialize the HFModelProcessor with the given configuration."""
-        super().__init__()
-        self.config = config
-        self.tokenizer = AutoTokenizer.from_pretrained(config.encoder_pretrained_model_name_or_path)
-        self.label_encoder = LabelEncoder(config.sp2id, config.id2sp)
-
-    @property
-    def num_labels(self) -> int:
-        """Get the number of labels for classification tasks.
-        
-        Returns
-        -------
-        int
-            The number of labels for classification tasks.
-        """
-        return len(self.config.sp2id) if self.config.sp2id is not None else self.config.max_length
 
 
 class HFModel(PreTrainedModel):
@@ -223,7 +247,7 @@ class HFModel(PreTrainedModel):
         attention_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = False,
         **kwargs,
-    ) -> ModelOutput:
+    ) -> SequenceClassifierOutput:
         """Forward pass of the model. You need to implement this method for your model."""
         encoder_outputs = self.encoder(
             input_ids=input_ids,
@@ -232,7 +256,7 @@ class HFModel(PreTrainedModel):
         )
         encoder_last_hidden_state = self.encoder_dropout(encoder_outputs.last_hidden_state)
 
-        return ModelOutput(
+        return SequenceClassifierOutput(
             last_hidden_state=encoder_last_hidden_state,
             attentions=encoder_outputs.attentions,
         )
@@ -253,7 +277,7 @@ class HFModelForTask(HFModel):
             Configuration object containing model hyperparameters and settings.
         """
         super().__init__(config)
-        self.cls_head = ClassificationHead(
+        self.classifier = HFModelClassifier(
             hidden_dim=config.hidden_dim,
             num_layers=config.num_layers,
             num_labels=config.num_labels,
@@ -266,7 +290,7 @@ class HFModelForTask(HFModel):
         labels: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = False,
         **kwargs,
-    ) -> ModelOutput:
+    ) -> SequenceClassifierOutput:
         """Compute forward pass for signal peptide detection.
 
         Parameters
@@ -282,42 +306,31 @@ class HFModelForTask(HFModel):
         
         Returns
         -------
-        ModelOutput
-            Model output containing loss, logits, predictions, last hidden states,
-            and attentions for signal peptide detection.
+        SequenceClassifierOutput
+            Model output containing loss, logits, predictions, last hidden states, and attentions.
         """
         encoder_outputs = super().forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
             output_attentions=output_attentions,
         )
-        encoder_last_hidden_state = encoder_outputs.last_hidden_state
-
-        cls_outputs = self.cls_head(encoder_last_hidden_state, attention_mask)
-        logits = cls_outputs.logits
-        preds = torch.argmax(logits, dim=-1)
+        classifier_outputs = self.classifier(encoder_outputs.last_hidden_state, attention_mask)
+        logits = classifier_outputs.logits
 
         loss = None
         if labels is not None:
             loss_fct = nn.CrossEntropyLoss()
             loss = loss_fct(logits, labels)
 
-        last_hidden_state = {
-            "encoder": encoder_last_hidden_state,
-            "cls_head": cls_outputs.last_hidden_state,
-        }
+        hidden_states = encoder_outputs.hidden_states + classifier_outputs.hidden_states
 
         attentions = None
         if output_attentions:
-            attentions = {
-                "encoder": encoder_outputs.attentions,
-                "cls_head": cls_outputs.attentions,
-            }
+            attentions = encoder_outputs.attentions + classifier_outputs.attentions
 
-        return ModelOutput(
+        return SequenceClassifierOutput(
             loss=loss,
             logits=logits,
-            predictions=preds,
-            last_hidden_state=last_hidden_state,
+            hidden_states=hidden_states,
             attentions=attentions,
         )
