@@ -48,10 +48,6 @@ model:
     factor: 0.1
     patience: 10
 
-  metric:
-    _target_: src.models.components.metrics.Metrics
-    _partial_: true
-
   best_metric: mcc
 
   compile: false
