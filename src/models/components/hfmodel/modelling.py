@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from typing import Optional, Tuple, Dict, Union, List
+from typing import Optional, Dict, Union, List
 from transformers import PreTrainedModel, AutoModel, AutoTokenizer
 from transformers.modeling_outputs import SequenceClassifierOutput
 from .configuration import HFModelConfig
@@ -232,6 +232,13 @@ class HFModel(PreTrainedModel):
     config_class = HFModelConfig
 
     def __init__(self, config: HFModelConfig):
+        """Initialize the HFModel with the given configuration.
+        
+        Parameters
+        ----------
+        config : HFModelConfig
+            Configuration object containing model hyperparameters and settings.
+        """
         super().__init__(config)
         self.config = config
         self.encoder = AutoModel.from_pretrained(
@@ -248,7 +255,17 @@ class HFModel(PreTrainedModel):
         output_attentions: Optional[bool] = False,
         **kwargs,
     ) -> SequenceClassifierOutput:
-        """Forward pass of the model. You need to implement this method for your model."""
+        """Forward pass of the model. You need to implement this method for your model.
+        
+        Parameters
+        ----------
+        input_ids : torch.Tensor
+            Tokenized input sequences (batch_size, seq_len).
+        attention_mask : torch.Tensor
+            Attention mask for input sequences (batch_size, seq_len).
+        output_attentions : bool, optional
+            Whether to return attention weights from the model.
+        """
         encoder_outputs = self.encoder(
             input_ids=input_ids,
             attention_mask=attention_mask,
