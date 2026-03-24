@@ -154,7 +154,7 @@ class LitModule(LightningModule):
         model_output = self.model_step(input_ids, attention_mask)
         logits = model_output.logits
 
-        loss = self.hparams.criterion(logits, batch["label"])
+        loss = self.criterion(logits, batch["label"])
         self.train_loss.update(loss)
 
         return loss
