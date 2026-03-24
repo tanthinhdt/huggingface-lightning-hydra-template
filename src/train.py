@@ -74,15 +74,15 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     log.info(f"Random sample from validation set -\n{datamodule.get_random_sample('validation')}")
     log.info(f"Random sample from testing set -\n{datamodule.get_random_sample('test')}")
 
-    log.info(f"Instantiating loss function <{cfg.model.loss_fct._target_}>")
-    loss_fct = hydra.utils.instantiate(
-        cfg.model.loss_fct,
+    log.info(f"Instantiating criterion <{cfg.model.criterion._target_}>")
+    criterion = hydra.utils.instantiate(
+        cfg.model.criterion,
         class_weight=datamodule.class_weight,
         class_count=datamodule.class_count
     )
 
     log.info(f"Instantiating litmodule <{cfg.model._target_}>")
-    model: LightningModule = hydra.utils.instantiate(cfg.model, net=net, loss_fct=loss_fct)
+    model: LightningModule = hydra.utils.instantiate(cfg.model, net=net, criterion=criterion)
 
     log.info("Instantiating callbacks...")
     callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))
