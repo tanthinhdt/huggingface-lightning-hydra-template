@@ -1,7 +1,7 @@
 import torch
 from typing import Any, Dict, Tuple
 from lightning import LightningModule
-from torchmetrics import MaxMetric, MeanMetric, Metric
+from torchmetrics import MaxMetric, MeanMetric
 from src.models.components.metrics import Metrics
 
 
@@ -44,7 +44,6 @@ class LitModule(LightningModule):
         criterion: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
-        metric: Metric,
         best_metric_name: str,
         compile: bool,
     ) -> None:
@@ -60,8 +59,6 @@ class LitModule(LightningModule):
             The optimizer to use for updating model parameters.
         scheduler : torch.optim.lr_scheduler
             The learning rate scheduler to adjust the learning rate during training.
-        metric : Metric
-            The metric to evaluate model performance on validation and test sets.
         best_metric_name : str
             The name of the metric to track for best performance during validation.
         compile : bool
