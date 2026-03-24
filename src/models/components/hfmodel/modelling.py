@@ -121,7 +121,7 @@ class Processor:
         super().__init__()
         self.config = config
         self.tokenizer = AutoTokenizer.from_pretrained(config.encoder_pretrained_model_name_or_path)
-        self.label_encoder = LabelEncoder(config.sp2id, config.id2sp)
+        self.label_encoder = LabelEncoder(config.label2id, config.id2label)
 
     @property
     def num_labels(self) -> int:
@@ -150,8 +150,7 @@ class Processor:
         return self.tokenizer(
             sequences,
             padding="max_length",
-            truncation=True,
-            max_length=self.config.max_seq_length,
+            max_length=self.config.max_position_embeddings,
             return_tensors="pt",
         )
 
