@@ -15,11 +15,11 @@ class HFModelConfig(PretrainedConfig):
         encoder_pretrained_model_name_or_path: str = None,
         hidden_dim: int = None,
         encoder_dropout: float = 0.1,
-        max_position_embeddings: int = 512,
+        max_sequence_length: int = 512,
         **kwargs
     ):
         super().__init__(**kwargs)
         self.encoder_pretrained_model_name_or_path = encoder_pretrained_model_name_or_path
         self.hidden_dim = hidden_dim
         self.encoder_dropout = encoder_dropout
-        self.max_position_embeddings = max_position_embeddings
+        self.max_sequence_length = max_sequence_length

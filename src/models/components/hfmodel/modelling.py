@@ -150,7 +150,7 @@ class Processor:
         return self.tokenizer(
             sequences,
             padding="max_length",
-            max_length=self.config.max_position_embeddings,
+            max_length=self.config.max_sequence_length,
             return_tensors="pt",
         )
 
