@@ -1,4 +1,4 @@
-_target_: src.models.module.LitModule
+_target_: src.models.litmodule.LitModule
 
 net:
   _target_: src.models.components.hfmodel.HFModelForTask
@@ -9,7 +9,7 @@ net:
     encoder_dropout: 0.1
 
 criterion:
-  _target_: src.models.components.losses.CrossEntropyLoss
+  _target_: src.models.components.criterions.CrossEntropyLoss
 
 optimizer:
   _target_: torch.optim.Adam
