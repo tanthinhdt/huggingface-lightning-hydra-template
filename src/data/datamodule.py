@@ -72,17 +72,35 @@ class DataModule(LightningDataModule):
 
     @property
     def num_train_samples(self) -> int:
-        """Return the number of training samples."""
+        """Return the number of training samples.
+        
+        Returns
+        -------
+        int
+            The number of training samples in the dataset, or 0 if the data is not loaded
+        """
         return self.data["train"].num_rows if self.data else 0
 
     @property
     def num_val_samples(self) -> int:
-        """Return the number of validation samples."""
+        """Return the number of validation samples.
+        
+        Returns
+        -------
+        int
+            The number of validation samples in the dataset, or 0 if the data is not loaded
+        """
         return self.data["validation"].num_rows if self.data else 0
 
     @property
     def num_test_samples(self) -> int:
-        """Return the number of test samples."""
+        """Return the number of test samples.
+        
+        Returns
+        -------
+        int
+            The number of test samples in the dataset, or 0 if the data is not loaded
+        """
         return self.data["test"].num_rows if self.data else 0
 
     def prepare_data(self) -> None:
@@ -103,13 +121,24 @@ class DataModule(LightningDataModule):
         `self.prepare_data()` and there is a barrier in between which ensures that all the processes proceed to
         `self.setup()` once the data is prepared and available for use.
 
-        :param stage: The stage to setup. Either `"fit"`, `"validate"`, `"test"`, or `"predict"`. Defaults to ``None``.
+        Parameters
+        ----------
+        stage: Optional[str], optional (default=None)
+            The stage to setup. Either `"fit"`, `"validate"`, `"test"`, or `"predict"`. Defaults to ``None``.
         """
         def process(batch: Dict[str, List[Any]]) -> Dict[str, List[Any]]:
             """Process a batch from the dataset.
 
-            :param batch: A batch from the dataset.
-            :return: The processed batch.
+            Parameters
+            ----------
+            batch : Dict[str, List[Any]]
+                A batch from the dataset, where keys are column names and values are lists of column values
+                for the batch.
+            
+            Returns
+            -------
+            Dict[str, List[Any]]
+                A processed batch, where the input sequences are tokenized and the labels are encoded.
             """
             inputs = self.hparams.processor.tokenize_sequences(batch["sequence"])
             labels = self.hparams.processor.encode_labels(batch["label"])
@@ -144,7 +173,10 @@ class DataModule(LightningDataModule):
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.
 
-        :return: The train dataloader.
+        Returns
+        -------
+        DataLoader[Any]
+            The train dataloader.
         """
         return DataLoader(
             dataset=self.data["train"],
@@ -157,7 +189,10 @@ class DataModule(LightningDataModule):
     def val_dataloader(self) -> DataLoader[Any]:
         """Create and return the validation dataloader.
 
-        :return: The validation dataloader.
+        returns
+        -------
+        DataLoader[Any]
+            The validation dataloader.
         """
         return DataLoader(
             dataset=self.data["validation"],
@@ -170,7 +205,10 @@ class DataModule(LightningDataModule):
     def test_dataloader(self) -> DataLoader[Any]:
         """Create and return the test dataloader.
 
-        :return: The test dataloader.
+        Returns
+        -------
+        DataLoader[Any]
+            The test dataloader.
         """
         return DataLoader(
             dataset=self.data["test"],
@@ -184,15 +222,20 @@ class DataModule(LightningDataModule):
         """Lightning hook for cleaning up after `trainer.fit()`, `trainer.validate()`,
         `trainer.test()`, and `trainer.predict()`.
 
-        :param stage: The stage being torn down. Either `"fit"`, `"validate"`, `"test"`, or `"predict"`.
-            Defaults to ``None``.
+        Parameters
+        ----------
+        stage: Optional[str], optional (default=None)
+            The stage to teardown. Either `"fit"`, `"validate"`, `"test"`, or `"predict"`. Defaults to ``None``.
         """
         pass
 
     def state_dict(self) -> Dict[Any, Any]:
         """Called when saving a checkpoint. Implement to generate and save the datamodule state.
 
-        :return: A dictionary containing the datamodule state that you want to save.
+        Returns
+        -------
+        Dict[Any, Any]
+            The datamodule state to be saved in the checkpoint.
         """
         return {}
 
@@ -200,7 +243,10 @@ class DataModule(LightningDataModule):
         """Called when loading a checkpoint. Implement to reload datamodule state given datamodule
         `state_dict()`.
 
-        :param state_dict: The datamodule state returned by `self.state_dict()`.
+        Parameters
+        ----------
+        state_dict: Dict[str, Any]
+            The datamodule state loaded from the checkpoint.
         """
         pass
 
