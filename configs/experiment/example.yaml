@@ -35,6 +35,9 @@ model:
       hidden_dim: 320
       encoder_dropout: 0.1
 
+  criterion:
+    _target_: src.models.components.criterions.CrossEntropyLoss
+
   optimizer:
     _target_: torch.optim.Adam
     _partial_: true
@@ -48,7 +51,7 @@ model:
     factor: 0.1
     patience: 10
 
-  best_metric: mcc
+  best_metric_name: mcc
 
   compile: false
 
@@ -56,13 +59,13 @@ callbacks:
   model_checkpoint:
     dirpath: ${paths.output_dir}/checkpoints
     filename: epoch_{epoch:03d}
-    monitor: val/${model.best_metric}_best
+    monitor: val/${model.best_metric_name}_best
     mode: max
     save_last: false
     auto_insert_metric_name: true
 
   early_stopping:
-    monitor: val/${model.best_metric}
+    monitor: val/${model.best_metric_name}
     patience: 10
     mode: max
     strict: false

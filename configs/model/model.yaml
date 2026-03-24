@@ -24,5 +24,7 @@ scheduler:
   factor: 0.1
   patience: 10
 
+best_metric_name: mcc
+
 # compile model for faster training with pytorch 2.0
 compile: false
