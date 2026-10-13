@@ -1,0 +1,10 @@
+# @package model
+name_or_path: ???
+tokenizer_name_or_path: ${model.name_or_path}
+revision: null
+tokenizer_revision: ${model.revision}
+local_files_only: false
+max_length: 256
+attn_implementation: eager
+ignore_mismatched_sizes: false # explicitly enable when replacing an incompatible pretrained head
+config: {} # optional AutoConfig overrides; output label count is controlled by data.labels

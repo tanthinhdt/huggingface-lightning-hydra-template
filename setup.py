@@ -9,8 +9,16 @@ setup(
     author="",
     author_email="",
     url="https://github.com/user/project",
-    install_requires=["lightning", "hydra-core", "numpy", "scikit-learn>=1.5,<2", "optuna>=3.6,<5", "polars"],
+    install_requires=[
+        "lightning",
+        "hydra-core",
+        "numpy",
+        "scikit-learn>=1.5,<2",
+        "optuna>=3.6,<5",
+        "polars",
+    ],
     packages=find_packages(),
+    extras_require={"huggingface": ["transformers>=4.48.1,<5", "datasets>=4.0.0,<5"]},
     # use this to customize global commands available in the terminal after installing the package
     entry_points={
         "console_scripts": [

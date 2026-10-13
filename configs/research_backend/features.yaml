@@ -1,0 +1,2 @@
+# @package backend
+_target_: src.research.training.LightningBackend

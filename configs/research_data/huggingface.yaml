@@ -1,0 +1,15 @@
+# @package data
+_target_: src.research.huggingface_data.from_huggingface
+path: ???
+labels: [positive]
+name: null
+split: train
+revision: null # pin an immutable Hub commit for reproducibility
+data_files: null
+cache_dir: null
+from_disk: false
+text_column: text
+text_pair_column: null
+label_column: label
+id_column: sample_id
+group_column: null

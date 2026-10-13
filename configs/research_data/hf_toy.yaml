@@ -1,0 +1,4 @@
+# @package data
+_target_: src.research.huggingface_data.toy_text
+n_samples: 80
+n_labels: 1

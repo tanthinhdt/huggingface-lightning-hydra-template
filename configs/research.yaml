@@ -1,6 +1,7 @@
 defaults:
   - research_data: synthetic
   - research_model: mlp
+  - research_backend: features
   - split: stratified
   - optimization: adam
   - search: default
@@ -17,8 +18,6 @@ final_name: final
 evaluation_name: evaluation
 manifest: ${output_dir}/${final_name}/predictor.json
 final_test: false
-backend:
-  _target_: src.research.training.LightningBackend
 fit:
   max_epochs: 3
   accelerator: cpu

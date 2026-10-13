@@ -1,0 +1,12 @@
+defaults:
+  - research
+  - override research_data: hf_toy
+  - override research_model: hf_tiny
+  - override research_backend: huggingface
+  - override search: huggingface
+  - _self_
+
+output_dir: ${hydra:runtime.cwd}/logs/research/huggingface
+optimization:
+  batch_size: 8
+  lr: 0.001

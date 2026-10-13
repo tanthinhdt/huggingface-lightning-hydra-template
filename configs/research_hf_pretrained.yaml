@@ -1,0 +1,9 @@
+defaults:
+  - research_hf
+  - override research_data: huggingface
+  - override research_model: huggingface
+  - _self_
+
+output_dir: ${hydra:runtime.cwd}/logs/research/pretrained
+# Required overrides: data.path=<Hub dataset or local loader> model.name_or_path=<model>
+# Set data.from_disk=true for a dataset saved with Dataset.save_to_disk().

@@ -13,6 +13,8 @@ from src.research.artifacts import read_json, write_json, provenance
 
 class GradientSaliency:
     def explain(self, model, inputs, target):
+        if hasattr(model, "gradient_saliency"):
+            return model.gradient_saliency(inputs, target)
         x = torch.tensor(inputs, dtype=torch.float32, requires_grad=True)
         with torch.enable_grad():
             output = model(x)
@@ -29,6 +31,8 @@ class IntegratedGradients:
         self.steps = steps
 
     def explain(self, model, inputs, target):
+        if hasattr(model, "integrated_gradients"):
+            return model.integrated_gradients(inputs, target, self.steps)
         # Zero baseline in raw feature coordinates; use a custom method for other baselines.
         gradient = GradientSaliency()
         total = np.zeros_like(inputs)
@@ -51,7 +55,12 @@ class AttentionAnalysis:
             if not layers:
                 raise ValueError("Adapter returned no attention tensors")
             stacked = torch.stack(tuple(layers))
-            if stacked.ndim != 5 or stacked.shape[1] != len(inputs):
+            batch_size = (
+                inputs["input_ids"].shape[0]
+                if isinstance(inputs, dict) or hasattr(inputs, "input_ids")
+                else len(inputs)
+            )
+            if stacked.ndim != 5 or stacked.shape[1] != batch_size:
                 raise ValueError("Expected attention layers shaped [N, heads, tokens, tokens]")
             return stacked.mean(dim=(0, 2)).cpu().numpy()
 
@@ -73,9 +82,20 @@ def interpret(cfg, data, splits, directory):
     backend = hydra.utils.instantiate(OmegaConf.create(manifest["backend"]))
     method = hydra.utils.instantiate(cfg.interpretation.method)
     member_values = []
+    input_metadata = None
     for checkpoint in manifest["checkpoints"]:
         model = backend.load(checkpoint)
-        member_values.append(method.explain(model, data.x[indices], cfg.interpretation.target))
+        inputs = (
+            backend.explanation_inputs(model, data, indices)
+            if hasattr(backend, "explanation_inputs")
+            else data.select_inputs(indices)
+        )
+        if hasattr(model, "interpretation_metadata"):
+            member_metadata = model.interpretation_metadata(inputs)
+            if input_metadata is not None and input_metadata != member_metadata:
+                raise ValueError("Cannot average token attributions with different token mappings")
+            input_metadata = member_metadata
+        member_values.append(method.explain(model, inputs, cfg.interpretation.target))
     # This is a weighted mean of member-logit attributions, not ensemble-probability attribution.
     values = np.average(member_values, axis=0, weights=manifest["weights"])
     directory = Path(directory)
@@ -94,6 +114,7 @@ def interpret(cfg, data, splits, directory):
             "method": OmegaConf.to_container(cfg.interpretation, resolve=True),
             "sample_ids": [data.ids[i] for i in indices],
             "target_type": "attention" if isinstance(method, AttentionAnalysis) else "logit",
+            "input_metadata": input_metadata,
             "ensemble_semantics": "weighted_mean_member_attributions",
             "seed": cfg.seed,
             "environment": provenance(),

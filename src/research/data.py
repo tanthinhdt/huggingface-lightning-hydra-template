@@ -1,12 +1,29 @@
 """An offline example and a stable feature-data adapter contract."""
 
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 from sklearn.datasets import make_classification, make_multilabel_classification
 from sklearn.model_selection import KFold, StratifiedKFold, StratifiedGroupKFold
 
 from src.research.artifacts import fingerprint
+
+
+class ResearchDataset(Protocol):
+    """Split orchestration uses metadata, never assumes inputs are a numeric array."""
+
+    y: np.ndarray
+    ids: list
+    labels: list
+    groups: np.ndarray
+
+    @property
+    def fingerprint(self) -> str: ...
+
+    def validate(self, task): ...
+
+    def select_inputs(self, indices): ...
 
 
 @dataclass
@@ -16,6 +33,9 @@ class ResearchData:
     ids: list
     labels: list
     groups: np.ndarray = None
+
+    def select_inputs(self, indices):
+        return self.x[indices]
 
     def validate(self, task):
         if self.x.shape[0] != len(self.ids) or self.y.shape != (len(self.ids), len(self.labels)):
