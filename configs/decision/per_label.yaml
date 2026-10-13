@@ -1,0 +1,6 @@
+mode: per_label
+source: calibration
+metric: f1_macro
+fallback: 0.5
+grid_size: 101
+min_support: 5

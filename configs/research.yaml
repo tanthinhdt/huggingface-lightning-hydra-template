@@ -1,0 +1,32 @@
+defaults:
+  - research_data: synthetic
+  - research_model: mlp
+  - split: stratified
+  - optimization: adam
+  - search: default
+  - predictor: single
+  - decision: global
+  - interpretation: saliency
+  - _self_
+
+action: run # cv, search, refit, evaluate, interpret, nested_cv, run
+task: binary
+seed: 0
+output_dir: ${hydra:runtime.cwd}/logs/research/example
+final_name: final
+evaluation_name: evaluation
+manifest: ${output_dir}/${final_name}/predictor.json
+final_test: false
+backend:
+  _target_: src.research.training.LightningBackend
+fit:
+  max_epochs: 3
+  accelerator: cpu
+  devices: 1
+  deterministic: true
+  num_sanity_val_steps: 0
+hydra:
+  run:
+    dir: ${output_dir}/commands/${now:%Y-%m-%d_%H-%M-%S-%f}
+  job:
+    chdir: false

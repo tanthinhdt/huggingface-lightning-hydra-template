@@ -1,0 +1,3 @@
+# @package data
+_target_: src.research.data.from_npz
+path: ???

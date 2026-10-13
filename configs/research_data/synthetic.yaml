@@ -1,0 +1,6 @@
+# @package data
+_target_: src.research.data.synthetic
+n_samples: 120
+n_features: 8
+n_labels: 1
+seed: 42

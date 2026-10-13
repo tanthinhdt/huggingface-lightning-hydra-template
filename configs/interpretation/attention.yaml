@@ -1,0 +1,5 @@
+partition: development
+max_samples: 16
+target: 0
+method:
+  _target_: src.research.interpretation.AttentionAnalysis

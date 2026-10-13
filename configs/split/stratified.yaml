@@ -1,0 +1,5 @@
+strategy: stratified
+manifest_path: null # optional JSON partitions/folds expressed using sample IDs
+n_folds: 5
+test_fraction: 0.2
+calibration_fraction: 0.2 # fraction of non-test data, held out from CV and refitting

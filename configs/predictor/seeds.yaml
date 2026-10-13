@@ -1,0 +1,3 @@
+kind: seeds
+seeds: [0, 1, 2]
+weights: null

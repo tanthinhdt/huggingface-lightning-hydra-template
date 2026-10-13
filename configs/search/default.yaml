@@ -1,0 +1,14 @@
+name: research
+storage: null # defaults to output_dir/study.db
+n_trials: 3 # total budget on resume
+metric: average_precision # mean fold score; maximize
+pruning_startup_trials: 5
+parameters:
+  optimization.lr:
+    type: float
+    low: 0.001
+    high: 0.03
+    log: true
+  model.hidden_dim:
+    type: categorical
+    choices: [8, 16, 32]
