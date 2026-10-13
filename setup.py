@@ -9,13 +9,14 @@ setup(
     author="",
     author_email="",
     url="https://github.com/user/project",
-    install_requires=["lightning", "hydra-core"],
+    install_requires=["lightning", "hydra-core", "numpy", "scikit-learn>=1.5,<2", "optuna>=3.6,<5", "polars"],
     packages=find_packages(),
     # use this to customize global commands available in the terminal after installing the package
     entry_points={
         "console_scripts": [
             "train_command = src.train:main",
             "eval_command = src.eval:main",
+            "research_command = src.research_cli:main",
         ]
     },
 )
