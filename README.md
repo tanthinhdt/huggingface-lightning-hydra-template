@@ -4,10 +4,11 @@ A template for experiments that contain multiple model fits: cross-validation,
 Optuna selection, refitting, binary or multilabel threshold fitting, single-model
 and ensemble evaluation, and interpretation.
 
-The research entry point includes a small **offline feature-classification example**.
-Replace its data factory, training backend, or interpretation methods for your
-project. The original Hugging Face sequence-classification entry points remain
-available separately; they require a real dataset and pretrained encoder.
+The research entry point includes **offline feature and Hugging Face text examples**.
+Both run through the same CV, selection, threshold, ensemble, and interpretation
+workflows. The Hugging Face backend keeps Arrow datasets intact, dynamically pads
+tokenized batches, and trains Transformers sequence classifiers with Lightning.
+The original Hugging Face entry points remain available separately.
 
 ## Installation
 
@@ -72,10 +73,101 @@ CV selection scores are not independent final performance estimates. Test result
 must not guide selection. If test interpretation informs new model changes, treat
 that test set as development data thereafter.
 
+## Hugging Face research backend
+
+Run the same protocol using a tiny, randomly initialized BERT and an in-memory
+Hugging Face dataset. These commands do not access the Hub:
+
+```bash
+python -m src.research_cli --config-name research_hf output_dir=logs/hf_example
+python -m src.research_cli --config-name research_hf action=evaluate output_dir=logs/hf_example
+python -m src.research_cli --config-name research_hf action=interpret output_dir=logs/hf_example \
+  interpretation=integrated_gradients
+python -m src.research_cli --config-name research_hf action=interpret output_dir=logs/hf_example \
+  interpretation=attention
+```
+
+`research_hf` selects `research_backend=huggingface`, `research_data=hf_toy`,
+`research_model=hf_tiny`, and `search=huggingface`. The feature example remains the
+default `research` configuration. CV, nested CV, OOF threshold transfer, refitting,
+single/seed/fold predictors, evaluation, and interpretation share the same orchestration.
+
+For a pretrained Transformer and your own dataset:
+
+```bash
+python -m src.research_cli --config-name research_hf_pretrained \
+  output_dir=logs/my_text_project \
+  data.path=your-org/your-dataset data.text_column=text data.label_column=label \
+  data.id_column=sample_id model.name_or_path=distilbert/distilbert-base-uncased
+```
+
+Repeat those data/model overrides for later actions, or save them in a project YAML
+config inheriting `research_hf_pretrained` and use its config name for every command.
+`data.path` also accepts a local dataset loader such as `json` with `data.data_files`,
+or a saved Arrow dataset directory with `data.from_disk=true`. Set `data.cache_dir`
+to override the standard Hugging Face download/processing cache. The loader selects
+one map-style `Dataset` through `data.split`; streaming datasets are unsupported.
+If you need published train/test assignments, assemble the sample population in a
+data factory and supply the published sample-ID split manifest. Do not silently
+resplit a dataset that already has a required evaluation protocol.
+
+Required columns are stable unique **string IDs**, text, and numeric targets.
+Binary targets may be scalar 0/1 or length-one vectors. Multilabel targets are
+0/1 vectors in the order specified by `data.labels`. Set `task=multilabel`,
+`data.labels='[label_a,label_b]'`, and an appropriate split strategy for those tasks.
+Optional `data.text_pair_column` enables sentence pairs; `data.group_column`
+supplies groups for split isolation. For the offline multilabel example:
+
+```bash
+python -m src.research_cli --config-name research_hf output_dir=logs/hf_multilabel \
+  task=multilabel data.n_labels=2 split.strategy=kfold decision=per_label predictor=seeds
+```
+
+The data adapter retains Arrow storage and uses `.select()` for partitions and
+`.map()` for tokenization. Only ID/target/group metadata is converted to Python or
+NumPy structures. Tokenization uses a fixed tokenizer vocabulary; it does not learn
+from validation or test text. Dynamic padding happens per batch, with truncation
+controlled by `model.max_length`. Lightning trains the model with AdamW and BCE
+logit loss, including a **single sigmoid output for binary classification**.
+This is separate from the original ESM example's two-class softmax convention.
+
+`model.name_or_path` selects `AutoModelForSequenceClassification`.
+`model.tokenizer_name_or_path` can select another compatible tokenizer.
+Pin `model.revision`, `model.tokenizer_revision`, and `data.revision` to immutable
+Hub commits for reproducibility. A local model directory can be used with
+`model.local_files_only=true`. `model.config` accepts architecture configuration
+overrides. An incompatible pretrained classification head fails by default; use
+`model.ignore_mismatched_sizes=true` explicitly when replacing that head. Other
+incompatible architecture shapes should be fixed in the model configuration.
+
+Each fit exports a `huggingface/` directory containing model safetensors, model
+configuration, tokenizer assets, and `metadata.json`. Metadata records label order,
+input columns, truncation length, training/validation IDs, dataset fingerprint,
+requested revisions, and resolved commit hashes when provided by Transformers.
+Final manifests reference these directories. Reloading evaluation and interpretation
+models uses **local saved artifacts only**, even when training started from the Hub.
+
+HF gradient saliency takes the L2 norm of gradients over word-embedding dimensions
+for each token. Integrated gradients sums embedding attributions per token, using
+zero word embeddings as the baseline while retaining masks, positions, and segment
+IDs. Both explain the chosen pre-threshold label logit and zero padding positions.
+Attention analysis averages layers/heads and masks padded query/key positions.
+Attention-capable architectures are loaded with eager attention for inspection.
+Token IDs, token strings, masks, and sample IDs are saved with each interpretation;
+ensemble attribution averaging rejects different token mappings. Tokens are not
+automatically mapped back to protein residues or original character spans.
+
+This backend covers binary and multilabel **text/sequence classification** using
+Transformers models that expose sequence logits. Multiclass, token classification,
+generation, vision/audio processing, quantized/PEFT training, and distributed fits
+need additional task-specific adapters. A real pretrained Hub model/GPU is not part
+of the offline verification; tests exercise actual tiny Transformers models,
+including loading a local pretrained checkpoint, without network requests.
+
 ## Commands and configuration
 
 `configs/research.yaml` composes independently configurable data, model, split,
-optimization, search, predictor, decision, and interpretation groups.
+backend, optimization, search, predictor, decision, and interpretation groups.
 
 | Action | Behavior |
 | --- | --- |
@@ -188,8 +280,9 @@ python -m src.research_cli action=interpret output_dir=logs/my_experiment \
   interpretation=integrated_gradients interpretation.target=0
 ```
 
-Included methods are signed gradient saliency and integrated gradients with a zero
-baseline in raw feature coordinates. Each analysis writes its own UUID directory.
+For numeric features, included methods are signed gradient saliency and integrated
+gradients with a zero baseline in raw feature coordinates. For HF sequences they
+dispatch to the embedding methods described above. Each analysis writes its own UUID directory.
 The target is a pre-threshold label logit. Ensemble outputs are weighted means of
 member-logit attributions, **not** attributions of the combined probability.
 
@@ -215,33 +308,36 @@ capabilities belong in project adapters and methods.
 
 ## Adapting to your project
 
-The feature example is a working reference backend, not a universal sequence/image
-trainer. The original ESM/Hugging Face model is not automatically plugged into it.
+Choose the feature backend for numeric inputs and the Hugging Face backend for
+text/sequence classifiers. The original custom ESM wrapper remains a separate
+entry point; the new backend uses standard Transformers sequence-classification models.
 
 For precomputed features, use `research_data=npz data.path=/absolute/path/data.npz`.
 The NPZ must contain numeric arrays `x[N,D]` and `y[N,L]`, Unicode arrays `ids[N]`
 and `labels[L]`, and optional `groups[N]`. Object/pickle arrays are rejected.
 
-1. Add a data factory selected by `research_data`. Return `ResearchData` with aligned
-   `x[N,...]`, binary targets `y[N,L]`, stable string sample IDs, label names, and
-   optional groups. The supplied feature backend expects numeric `x[N,D]`.
+1. Add a data factory selected by `research_data`. Return `ResearchData` for numeric
+   features or `HuggingFaceData` for Arrow-backed text. Both expose binary targets
+   `y[N,L]`, stable string sample IDs, label names, optional groups, a fingerprint,
+   validation, and `select_inputs(indices)`. The feature backend expects numeric `x[N,D]`.
 2. Add a model config under `research_model`; the feature backend instantiates it
    with `input_dim` and `output_dim` and expects logits `[N,L]`.
-3. For other modalities, replace `backend._target_` with a backend implementing:
+3. For other modalities, select a `research_backend` config implementing:
 
    ```python
    fit(cfg, data, train_ids, validation_ids, seed, output_dir)
    # -> checkpoint path + selected_epochs; train and validation must be disjoint
    load(checkpoint)  # -> model/adapter
    predict(model, data, indices)  # -> probabilities [N,L], in indices order
+   # Optional: explanation_inputs(model, data, indices) -> structured method inputs
    ```
 
 4. Fit preprocessing using training IDs only. Preserve its state with checkpoints.
    The reference backend saves training-only feature normalization in model buffers.
 5. Add interpretation adapters and methods for your model family.
 
-The reference backend runs one CPU or GPU device per fit. Distributed training,
-sequence batching, token attribution mapping, multilabel stratification, and temporal
+Both supplied backends run one CPU or GPU device per fit. Distributed training,
+residue/character attribution mapping, multilabel stratification, and temporal
 splitters require corresponding project adapters. Built-in splitting supports binary
 stratification, ordinary KFold, and binary stratified group folds. Group holdouts
 use GroupShuffleSplit to prevent group overlap.
@@ -331,4 +427,6 @@ The obsolete MNIST tests were replaced with offline integration checks covering
 search/CV/refit/evaluation, single and ensemble predictors, binary/multilabel decisions,
 split/group isolation, preprocessing isolation, artifact recovery, nested CV, and
 interpretation against a known linear model. The reference example is intended to
-make protocol changes testable before launching expensive project runs.
+make protocol changes testable before launching expensive project runs. Additional
+HF checks exercise real tiny BERT fits, dynamic padding, local pretrained loading,
+binary/multilabel ensembles, saved tokenizer reuse, and token-level interpretation.
