@@ -187,11 +187,11 @@ class LitModule(LightningModule):
         attention_mask = batch["attention_mask"]
         labels = batch["label"]
 
-        model_output = self.model_step(input_ids, attention_mask, labels=labels)
+        model_output = self.model_step(input_ids, attention_mask)
         predictions = torch.argmax(model_output.logits, dim=-1)
 
         # update and log metrics
-        self.val_loss.update(model_output.loss)
+        self.val_loss.update(self.criterion(model_output.logits, labels))
         self.val_metrics.update(predictions, labels)
 
     def on_validation_epoch_end(self) -> None:
@@ -247,6 +247,9 @@ class LitModule(LightningModule):
         stage : str
             The stage being set up. Either "fit", "validate", "test", or "predict".
         """
+        datamodule = self.trainer.datamodule
+        if datamodule is not None and getattr(datamodule, "class_weight", None) is not None:
+            self.criterion.class_weight = datamodule.class_weight.to(self.device)
         if self.hparams.compile and stage == "fit":
             self.net = torch.compile(self.net)
 

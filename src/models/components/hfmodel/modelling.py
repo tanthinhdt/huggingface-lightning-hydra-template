@@ -3,6 +3,7 @@ from torch import nn
 from typing import Optional, Dict, Union, List
 from transformers import PreTrainedModel, AutoModel, AutoTokenizer
 from transformers.modeling_outputs import SequenceClassifierOutput
+from transformers.modeling_outputs import BaseModelOutput
 from .configuration import HFModelConfig
 
 
@@ -29,7 +30,7 @@ def trim_special_tokens(last_hidden_state: torch.Tensor, attention_mask: torch.T
     trimmed_attention_masks = []
 
     for i in range(batch_size):
-        seq_len = seq_lengths[i].item()
+        seq_len = int(seq_lengths[i].item())
         # Extract tokens between [CLS] and [SEP]: positions 1 to seq_len-2
         embeddings = last_hidden_state[i, 1:seq_len-1, :]  # Exclude [CLS] and [SEP]
         mask = attention_mask[i, 1:seq_len-1]  # Corresponding mask
@@ -151,6 +152,7 @@ class Processor:
             sequences,
             padding="max_length",
             max_length=self.config.max_sequence_length,
+            truncation=True,
             return_tensors="pt",
         )
 
@@ -220,7 +222,10 @@ class HFModelClassifier(nn.Module):
             attention_mask=attention_mask,
         )
 
-        logits = self.classifier(context)
+        # Sequence classification: masked mean pooling over non-special tokens.
+        mask = feature_attention_masks.unsqueeze(-1).to(context.dtype)
+        pooled = (context * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1)
+        logits = self.classifier(pooled)
 
         attentions = None
         if output_attentions:
@@ -278,7 +283,7 @@ class HFModel(PreTrainedModel):
         )
         encoder_last_hidden_state = self.encoder_dropout(encoder_outputs.last_hidden_state)
 
-        return SequenceClassifierOutput(
+        return BaseModelOutput(
             last_hidden_state=encoder_last_hidden_state,
             attentions=encoder_outputs.attentions,
         )
@@ -344,11 +349,11 @@ class HFModelForTask(HFModel):
             loss_fct = nn.CrossEntropyLoss()
             loss = loss_fct(logits, labels)
 
-        hidden_states = encoder_outputs.hidden_states + classifier_outputs.hidden_states
+        hidden_states = (encoder_outputs.last_hidden_state, classifier_outputs.hidden_states)
 
         attentions = None
         if output_attentions:
-            attentions = encoder_outputs.attentions + classifier_outputs.attentions
+            attentions = encoder_outputs.attentions
 
         return SequenceClassifierOutput(
             loss=loss,

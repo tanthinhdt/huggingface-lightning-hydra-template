@@ -50,6 +50,7 @@ class DataModule(LightningDataModule):
         batch_size: int = 64,
         num_workers: int = 0,
         pin_memory: bool = False,
+        processor: Any = None,
     ) -> None:
         """Initialize a `DataModule`.
 
@@ -60,6 +61,8 @@ class DataModule(LightningDataModule):
         :param pin_memory: Whether to pin memory. Defaults to `False`.
         """
         super().__init__()
+        if processor is None:
+            raise ValueError("Provide a processor implementing tokenize_sequences and encode_labels")
 
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt

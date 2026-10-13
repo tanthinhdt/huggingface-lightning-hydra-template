@@ -15,7 +15,7 @@ class Criterion(nn.Module):
             A tensor containing the count of samples for each class.
         """
         super().__init__()
-        self.class_weight = class_weight
+        self.register_buffer("class_weight", class_weight)
         self.class_count = class_count
 
     def forward(self, logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
@@ -53,5 +53,6 @@ class CrossEntropyLoss(Criterion):
         torch.Tensor
             The computed cross-entropy loss.
         """
-        loss_fct = nn.CrossEntropyLoss(weight=self.class_weight.to(logits.device))
+        weight = self.class_weight
+        loss_fct = nn.CrossEntropyLoss(weight=weight)
         return loss_fct(logits, labels)

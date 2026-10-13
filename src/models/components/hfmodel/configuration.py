@@ -16,6 +16,7 @@ class HFModelConfig(PretrainedConfig):
         hidden_dim: int = None,
         encoder_dropout: float = 0.1,
         max_sequence_length: int = 512,
+        num_layers: int = 1,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -23,3 +24,4 @@ class HFModelConfig(PretrainedConfig):
         self.hidden_dim = hidden_dim
         self.encoder_dropout = encoder_dropout
         self.max_sequence_length = max_sequence_length
+        self.num_layers = num_layers

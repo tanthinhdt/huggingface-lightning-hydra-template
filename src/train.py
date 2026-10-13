@@ -57,7 +57,7 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     :return: A tuple with metrics and dict with all instantiated objects.
     """
     # set seed for random number generators in pytorch, numpy and python.random
-    if cfg.get("seed"):
+    if cfg.get("seed") is not None:
         seed_everything(cfg.seed, workers=True)
 
     log.info(f"Instantiating litmodule <{cfg.model._target_}>")
@@ -65,20 +65,12 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data, processor=net.get_processor())
-    datamodule.prepare_data()
-    datamodule.setup("fit")
-    log.info(f"Number of training samples: {datamodule.num_train_samples}")
-    log.info(f"Number of validation samples: {datamodule.num_val_samples}")
-    log.info(f"Number of testing samples: {datamodule.num_test_samples}")
-    log.info(f"Random sample from training set -\n{datamodule.get_random_sample('train')}")
-    log.info(f"Random sample from validation set -\n{datamodule.get_random_sample('validation')}")
-    log.info(f"Random sample from testing set -\n{datamodule.get_random_sample('test')}")
 
     log.info(f"Instantiating criterion <{cfg.model.criterion._target_}>")
     criterion = hydra.utils.instantiate(
         cfg.model.criterion,
-        class_weight=datamodule.class_weight,
-        class_count=datamodule.class_count
+        class_weight=None,
+        class_count=None
     )
 
     log.info(f"Instantiating litmodule <{cfg.model._target_}>")
@@ -112,12 +104,11 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         log.info("Starting training!")
         trainer.fit(
             model=model,
-            train_dataloaders=datamodule.train_dataloader(),
-            val_dataloaders=datamodule.val_dataloader(),
+            datamodule=datamodule,
             ckpt_path=cfg.get("ckpt_path"),
         )
         metric_dict.update(trainer.callback_metrics)
-        trainer.test(dataloaders=datamodule.val_dataloader(), ckpt_path="best", verbose=False)
+        trainer.validate(datamodule=datamodule, ckpt_path="best", verbose=False)
         val_metrics = [
             {
                 "Metric": k.split("/")[1],
@@ -149,7 +140,7 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
         log.info("Loading best model for HuggingFace saving...")
         best_model = hydra.utils.get_class(cfg.model._target_).load_from_checkpoint(
-            trainer.checkpoint_callback.best_model_path
+            trainer.checkpoint_callback.best_model_path, net=net, criterion=criterion
         )
 
         log.info("Registering model config and model classes to HuggingFace Auto classes...")
@@ -177,11 +168,7 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             overwrite = cfg.hf_config.get("overwrite", True)
             api = HfApi()
             if overwrite:
-                api.delete_repo(
-                    repo_id=output_repo,
-                    repo_type="model",
-                    missing_ok=True,
-                )
+                log.info("Updating the existing Hub repository without deleting its history.")
             api.create_repo(
                 repo_id=output_repo,
                 repo_type="model",

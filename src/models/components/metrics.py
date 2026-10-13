@@ -28,7 +28,7 @@ class Metrics(Metric):
         self.add_state("predictions", default=[], dist_reduce_fx="cat")
         self.add_state("labels", default=[], dist_reduce_fx="cat")
 
-    def update(self, predictions: torch.Tensor, labels: torch.Tensor, kingdoms: torch.Tensor) -> None:
+    def update(self, predictions: torch.Tensor, labels: torch.Tensor) -> None:
         """
         Update metric state with a batch of predictions and labels.
 

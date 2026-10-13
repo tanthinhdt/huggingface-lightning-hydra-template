@@ -18,14 +18,11 @@ tags: ["dataset", "model"]
 
 seed: 12345
 
-test: true
-
-gpu:
-  devices: 1
+test: false
 
 data:
   batch_size: 64
-  num_workers: 128
+  num_workers: 0
   pin_memory: false
 
 model:
@@ -59,9 +56,9 @@ callbacks:
   model_checkpoint:
     dirpath: ${paths.output_dir}/checkpoints
     filename: epoch_{epoch:03d}
-    monitor: val/${model.best_metric_name}_best
+    monitor: val/${model.best_metric_name}
     mode: max
-    save_last: false
+    save_last: true
     auto_insert_metric_name: true
 
   early_stopping:

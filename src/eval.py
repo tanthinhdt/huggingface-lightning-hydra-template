@@ -47,11 +47,13 @@ def evaluate(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     assert cfg.ckpt_path
 
+    net = hydra.utils.instantiate(cfg.model.net)
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
-    datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
+    datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data, processor=net.get_processor())
 
     log.info(f"Instantiating model <{cfg.model._target_}>")
-    model: LightningModule = hydra.utils.instantiate(cfg.model)
+    criterion = hydra.utils.instantiate(cfg.model.criterion, class_weight=None, class_count=None)
+    model: LightningModule = hydra.utils.instantiate(cfg.model, net=net, criterion=criterion)
 
     log.info("Instantiating loggers...")
     logger: List[Logger] = instantiate_loggers(cfg.get("logger"))
